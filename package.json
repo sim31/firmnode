@@ -29,7 +29,9 @@
   "homepage": "https://github.com/sim31/firmnode#readme",
   "dependencies": {
     "dotenv": "^16.0.3",
+    "ethers": "^5.7.2",
     "express": "^4.18.2",
+    "firmcontracts": "github:sim31/firmcontracts",
     "ganache": "^7.8.0"
   },
   "devDependencies": {
@@ -37,10 +39,9 @@
     "@types/node": "^20.1.1",
     "@typescript-eslint/eslint-plugin": "^5.59.5",
     "@typescript-eslint/parser": "^5.59.5",
-    "concurrently": "^8.0.1",
     "eslint": "^8.40.0",
     "eslint-config-standard-with-typescript": "^34.0.1",
-    "nodemon": "^2.0.22",
+    "ts-node": "^10.9.1",
     "typescript": "^5.0.4"
   }
 }

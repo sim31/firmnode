@@ -1,7 +1,9 @@
 import express, { type Express, type Request, type Response } from 'express';
 import dotenv from 'dotenv';
 import ganache from 'ganache';
+import { ethers } from 'ethers';
 import fs from 'fs';
+import FirmFs from './firmFs';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';
@@ -43,7 +45,7 @@ const walletConfig = privateKey !== undefined
       accountKeysPath: accountsPath,
     };
 
-const evmServer = ganache.server({
+const ganacheServer = ganache.server({
   chain: {
     vmErrorsOnRPCResponse: true
   },
@@ -60,9 +62,17 @@ const evmServer = ganache.server({
 });
 
 const evmPort = Number.parseInt(process.env.EVM_PORT ?? '60501');
-evmServer.listen(evmPort, (err) => {
+const evmAddress = `http://localhost:${evmPort}`;
+ganacheServer.listen(evmPort, (err) => {
   if (err != null) {
     console.error('Error launching ganache: ', err);
+  } else {
+    // FIXME: This doesn't work
+    console.log('Ethereum JSON RPC: ', evmAddress)
+
+    const provider = new ethers.providers.JsonRpcProvider(evmAddress);
+    const firmFs = new FirmFs(provider);
+    void firmFs.init();
   }
 });
 
