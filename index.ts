@@ -1,4 +1,5 @@
-import express, { type Express, type Request, type Response } from 'express';
+import type { Express, Request, Response } from 'express';
+import express from 'express';
 import dotenv from 'dotenv';
 import ganache from 'ganache';
 import { ethers } from 'ethers';
