@@ -4,6 +4,7 @@ import { FirmContractDeployer } from 'firmcontracts/interface/deployer';
 import { Filesystem } from 'firmcontracts/typechain-types';
 import { bytes32StrToCid0 } from 'firmcontracts/interface/cid';
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
+import { normalizeHexStr } from 'firmcontracts/interface/abi';
 
 export default class FirmFs {
   protected _deployer: FirmContractDeployer;
@@ -17,19 +18,21 @@ export default class FirmFs {
     this._deployer = new FirmContractDeployer(provider);
   }
 
-  async getEntry(address: string) {
+  async getEntryStat(address: string) {
+    const normAddr = normalizeHexStr(address);
     try {
-      const stat = await this._ipfsClient.files.stat(`/.firm/${address}`);
+      const stat = await this._ipfsClient.files.stat(`/.firm/${normAddr}`);
       return stat;
     } catch (err) {
-      console.log('Cant get entry: ', err);
+      console.log(`Cant get entry ${normAddr}:`, err);
       return undefined;
     }
   }
 
   async removeEntry(address: string) {
+    const normAddr = normalizeHexStr(address);
     try {
-      await this._ipfsClient.files.rm(`/.firm/${address}`, { recursive: true });
+      await this._ipfsClient.files.rm(`/.firm/${normAddr}`, { recursive: true });
     } catch (err: any) {
       console.error('Error deleting: ', typeof err === 'object' ? Object.entries(err) : err);
     }
@@ -41,23 +44,24 @@ export default class FirmFs {
     //   * If so - return
     //   * Otherwise delete it
     // * Copy CID
+    const normAddr = normalizeHexStr(address);
 
-    console.log(`Updating root cid for ${address}: ${cid}`);
+    console.log(`Updating root cid for ${normAddr}: ${cid}`);
 
-    const entry = await this.getEntry(address);
+    const entry = await this.getEntryStat(normAddr);
     if (entry !== undefined) {
       if (entry.cid.toV0().toString() === cid) {
         console.log('Entry already set');
         return;
       } else {
-        await this.removeEntry(address);
+        await this.removeEntry(normAddr);
       }
     }
 
     try {
       await this._ipfsClient.files.cp(
         '/ipfs/' + cid,
-        `/.firm/${address}`,
+        `/.firm/${normAddr}`,
         {
           parents: true,
           cidVersion: 0

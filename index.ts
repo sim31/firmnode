@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
 import express from 'express';
 import dotenv from 'dotenv';
 import ganache from 'ganache';
@@ -62,6 +62,8 @@ const ganacheServer = ganache.server({
   }
 });
 
+let firmFs: FirmFs | undefined;
+
 const evmPort = Number.parseInt(process.env.EVM_PORT ?? '60501');
 const evmAddress = `http://localhost:${evmPort}`;
 ganacheServer.listen(evmPort, (err) => {
@@ -72,14 +74,29 @@ ganacheServer.listen(evmPort, (err) => {
     console.log('Ethereum JSON RPC: ', evmAddress)
 
     const provider = new ethers.providers.JsonRpcProvider(evmAddress);
-    const firmFs = new FirmFs(provider);
+    firmFs = new FirmFs(provider);
     void firmFs.init();
   }
 });
 
 // TODO: routes
-app.get('/', (req: Request, res: Response) => {
-  res.send('Express + TypeScript Server!!!');
+// eslint-disable-next-line @typescript-eslint/no-misused-promises
+app.get('/proc/:addr', async (req: Request, res: Response) => {
+  const { addr } = req.params;
+  if (addr === undefined) {
+    throw Error('Undefined request parameter');
+  }
+  if (firmFs === undefined) {
+    throw Error('Not ready');
+  }
+
+  const entry = await firmFs.getEntryStat(addr);
+
+  if (entry === undefined) {
+    res.sendStatus(404);
+  } else {
+    res.send(entry);
+  }
 });
 
 app.listen(mainPort, () => {
