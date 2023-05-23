@@ -1,13 +1,32 @@
 import { ethers } from 'ethers';
 // TODO: fix path
-import { FirmContractDeployer } from 'firmcontracts/interface/deployer';
-import { Filesystem } from 'firmcontracts/typechain-types';
-import { bytes32StrToCid0 } from 'firmcontracts/interface/cid';
+import { FirmContractDeployer } from 'firmcore/node_modules/firmcontracts/interface/deployer';
+import { Filesystem } from 'firmcore/node_modules/firmcontracts/typechain-types';
+import { bytes32StrToCid0 } from 'firmcore/node_modules/firmcontracts/interface/cid';
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
-import { normalizeHexStr } from 'firmcontracts/interface/abi';
-import { AddressStr } from 'firmcontracts/interface/types';
+import { normalizeHexStr } from 'firmcore/node_modules/firmcontracts/interface/abi';
+import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types';
 import { ContractSeed } from './contractSeed';
 import stringify from 'json-stable-stringify-without-jsonify'
+import InvalidArgument from 'firmcore/src/exceptions/InvalidArgument';
+
+async function * streamToIt(stream: ReadableStream<Uint8Array>) {
+  // Get a lock on the stream
+  const reader = stream.getReader();
+
+  try {
+    while (true) {
+      // Read from the stream
+      const { done, value } = await reader.read();
+      // Exit if we're done
+      if (done) return;
+      // Else yield the chunk
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 export default class FirmFs {
   protected _deployer: FirmContractDeployer;
@@ -142,6 +161,35 @@ export default class FirmFs {
         stringify(err),
       );
     }
+  }
+
+  async importCARToAddr(addr: AddressStr, carFile: Blob) {
+    // * Check if this contract exists (we have its directory)
+    // * Import this CAR file
+    // * cp root of this CAR file
+    const stat = this.getEntryStat(addr);
+    if (stat === undefined) {
+      throw new InvalidArgument('No directory for this address');
+    }
+
+    const options = { pinRoots: false };
+    const it = streamToIt(carFile.stream());
+    const results = [];
+    for await (const r of this._ipfsClient.dag.import(it, options)) {
+      results.push(r);
+
+      const cidStr = r.root.cid.toString();
+      await this._ipfsClient.files.cp(
+        '/ipfs/' + cidStr,
+        `/.firm/${normalizeHexStr(addr)}/above/${cidStr}`,
+        {
+          parents: true,
+          cidVersion: 0
+        }
+      );
+    }
+
+    return results;
   }
 
   async init() {

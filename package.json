@@ -30,7 +30,7 @@
     "dotenv": "^16.0.3",
     "ethers": "^5.7.2",
     "express": "^4.18.2",
-    "firmcontracts": "github:sim31/firmcontracts",
+    "firmcore": "github:sim31/firmcore",
     "ganache": "^7.8.0",
     "ipfs-http-client": "^56.0.3",
     "json-stable-stringify-without-jsonify": "^1.0.1",

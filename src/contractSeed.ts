@@ -1,4 +1,4 @@
-import { IPFSLink } from 'firmcontracts/interface/types'
+import { IPFSLink } from 'firmcore/node_modules/firmcontracts/interface/types'
 import { ContractInput, FullTxInput } from './contractInput'
 
 export interface ContractSeed {

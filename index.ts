@@ -7,6 +7,7 @@ import ganache from 'ganache';
 import { ethers } from 'ethers';
 import fs from 'fs';
 import FirmFs from './src/firmFs';
+import { ServerToClientEvents, ClientToServerEvents } from 'firmcore/src/firmcore-firmnode/socketTypes';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';
@@ -32,7 +33,7 @@ const gatewayPort = process.env.GATEWAY_PORT ?? '60502';
 
 const app: Express = express();
 const server = createServer(app);
-const io = new Server(server, {
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   cors: {
     origin: 'http://localhost:5173'
   }
@@ -109,7 +110,17 @@ app.get('/proc/:addr', async (req: Request, res: Response) => {
 
 io.on('connection', (socket) => {
   console.log('A socket connection');
-  socket.emit('hello', 'howdy');
+  socket.on('import', async (to, carFile, callback) => {
+    if (firmFs === undefined) {
+      callback(new Error('not initialized'));
+      return;
+    }
+    try {
+      await firmFs.importCARToAddr(to, carFile);
+    } catch (err: any) {
+      callback(new Error(err.toString()));
+    }
+  })
 });
 
 server.listen(mainPort, () => {

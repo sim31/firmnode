@@ -1,4 +1,4 @@
-import { AddressStr } from 'firmcontracts/interface/types'
+import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types'
 
 export interface ContractInput {
   to: AddressStr
