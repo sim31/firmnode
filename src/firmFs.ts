@@ -5,6 +5,9 @@ import { Filesystem } from 'firmcontracts/typechain-types';
 import { bytes32StrToCid0 } from 'firmcontracts/interface/cid';
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
 import { normalizeHexStr } from 'firmcontracts/interface/abi';
+import { AddressStr } from 'firmcontracts/interface/types';
+import { ContractSeed } from './contractSeed';
+import stringify from 'json-stable-stringify-without-jsonify'
 
 export default class FirmFs {
   protected _deployer: FirmContractDeployer;
@@ -75,8 +78,79 @@ export default class FirmFs {
     }
   }
 
+  async createContractDir(
+    address: AddressStr,
+  ) {
+    try {
+      await this._ipfsClient.files.mkdir(
+        `/.firm/${normalizeHexStr(address)}/above`,
+        {
+          parents: true,
+          cidVersion: 0,
+        }
+      );
+      await this._ipfsClient.files.mkdir(
+        `/.firm/${normalizeHexStr(address)}/sc`,
+        {
+          cidVersion: 0,
+        }
+      )
+      await this._ipfsClient.files.mkdir(
+        `/.firm/${normalizeHexStr(address)}/below/in`,
+        { parents: true, cidVersion: 0 }
+      );
+    } catch (err: any) {
+      console.error(
+        'Failed creating directory for contract: ', address,
+        typeof err === 'object' ? Object.entries(err) : err
+      );
+    }
+  }
+
+  async initContractDir(address: AddressStr, seed: ContractSeed) {
+    try {
+      await this.createContractDir(this._deployer.getFactoryAddress());
+      const normAddr = normalizeHexStr(address);
+
+      if (seed.abiCID !== undefined) {
+        await this._ipfsClient.files.cp(
+          '/ipfs/' + seed.abiCID,
+          `/.firm/${normAddr}/sc/abi.json`,
+          {
+            parents: true,
+            cidVersion: 0
+          }
+        );
+      }
+
+      const encoder = new TextEncoder();
+
+      const content = encoder.encode(stringify(seed.deploymentTx, { space: 2 }));
+
+      // TODO: check if same CID is already there instead of writing each time?
+      await this._ipfsClient.files.write(
+        `/.firm/${normAddr}/sc/deployment.json`,
+        content,
+        {
+          create: true,
+          cidVersion: 0,
+        }
+      );
+    } catch (err: any) {
+      console.error(
+        'Failed initializing contract dir: ',
+        stringify(err),
+      );
+    }
+  }
+
   async init() {
     await this._deployer.init();
+    await this.initContractDir(
+      this._deployer.getFactoryAddress(),
+      { deploymentTx: this._deployer.getFactoryDeploymentTx() },
+    );
+
     this._fsContract = await this._deployer.deployFilesystem();
 
     this._fsContract.on(

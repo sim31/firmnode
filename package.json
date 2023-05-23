@@ -32,10 +32,13 @@
     "express": "^4.18.2",
     "firmcontracts": "github:sim31/firmcontracts",
     "ganache": "^7.8.0",
-    "ipfs-http-client": "^56.0.3"
+    "ipfs-http-client": "^56.0.3",
+    "json-stable-stringify-without-jsonify": "^1.0.1",
+    "socket.io": "^4.6.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.17",
+    "@types/json-stable-stringify-without-jsonify": "^1.0.0",
     "@types/node": "^20.1.1",
     "@typescript-eslint/eslint-plugin": "^5.59.5",
     "@typescript-eslint/parser": "^5.59.5",

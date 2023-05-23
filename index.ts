@@ -1,10 +1,12 @@
 import type { Express, NextFunction, Request, Response } from 'express';
 import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import ganache from 'ganache';
 import { ethers } from 'ethers';
 import fs from 'fs';
-import FirmFs from './firmFs';
+import FirmFs from './src/firmFs';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';
@@ -29,6 +31,12 @@ const mainPort = process.env.MAIN_PORT ?? '60500';
 const gatewayPort = process.env.GATEWAY_PORT ?? '60502';
 
 const app: Express = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:5173'
+  }
+});
 
 // TODO: Launch kubo
 // TODO: Launch ganche
@@ -99,6 +107,11 @@ app.get('/proc/:addr', async (req: Request, res: Response) => {
   }
 });
 
-app.listen(mainPort, () => {
+io.on('connection', (socket) => {
+  console.log('A socket connection');
+  socket.emit('hello', 'howdy');
+});
+
+server.listen(mainPort, () => {
   console.log(`⚡️[server]: Server is running at http://localhost:${mainPort}`);
 });
