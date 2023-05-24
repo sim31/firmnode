@@ -7,7 +7,7 @@ import ganache from 'ganache';
 import { ethers } from 'ethers';
 import fs from 'fs';
 import FirmFs from './src/firmFs';
-import { ServerToClientEvents, ClientToServerEvents } from 'firmcore/src/firmcore-firmnode/socketTypes';
+import { ServerToClientEvents, ClientToServerEvents } from './src/socketTypes';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';
@@ -109,16 +109,21 @@ app.get('/proc/:addr', async (req: Request, res: Response) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('A socket connection');
+  console.log('A socket connection ', socket.id);
   socket.on('import', async (to, carFile, callback) => {
     if (firmFs === undefined) {
-      callback(new Error('not initialized'));
+      // eslint-disable-next-line n/no-callback-literal
+      callback('not initialized');
       return;
     }
     try {
-      await firmFs.importCARToAddr(to, carFile);
+      console.log('import from: ', socket.id, '. carFile: ', carFile);
+      const results = await firmFs.importCARToAddr(to, carFile);
+      console.log('results: ', results);
     } catch (err: any) {
-      callback(new Error(err.toString()));
+      console.error('Error importing: ', err);
+      // TODO: clearer error messages?
+      callback(JSON.stringify(err));
     }
   })
 });

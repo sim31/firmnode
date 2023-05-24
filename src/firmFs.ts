@@ -163,7 +163,7 @@ export default class FirmFs {
     }
   }
 
-  async importCARToAddr(addr: AddressStr, carFile: Blob) {
+  async importCARToAddr(addr: AddressStr, carFile: Buffer[]) {
     // * Check if this contract exists (we have its directory)
     // * Import this CAR file
     // * cp root of this CAR file
@@ -173,9 +173,9 @@ export default class FirmFs {
     }
 
     const options = { pinRoots: false };
-    const it = streamToIt(carFile.stream());
     const results = [];
-    for await (const r of this._ipfsClient.dag.import(it, options)) {
+    for await (const r of this._ipfsClient.dag.import(carFile)) {
+      console.log('imported: ', r);
       results.push(r);
 
       const cidStr = r.root.cid.toString();
