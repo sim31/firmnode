@@ -6,10 +6,16 @@ import { bytes32StrToCid0 } from 'firmcore/node_modules/firmcontracts/interface/
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
 import { normalizeHexStr } from 'firmcore/node_modules/firmcontracts/interface/abi';
 import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types';
-import { ContractSeed } from './contractSeed';
+import { ContractSeed } from 'firmcore/src/firmcore-firmnode/contractSeed';
 import stringify from 'json-stable-stringify-without-jsonify'
 import InvalidArgument from 'firmcore/src/exceptions/InvalidArgument';
 import { CarCIDIterator } from '@ipld/car';
+import { Message, CInputMsgCodec, MessageCodec } from 'firmcore/src/firmcore-firmnode/message'
+import NotImplementedError from 'firmcore/src/exceptions/NotImplementedError';
+import { objectToFile, getFileCID } from 'firmcore/src/helpers/car';
+import { PathReporter } from 'io-ts/PathReporter';
+import { isLeft, isRight } from 'fp-ts/Either';
+import { right } from 'fp-ts/lib/EitherT';
 
 async function * buffersToAIterable(buffers: Buffer[]) {
   for (const buffer of buffers) {
@@ -122,6 +128,8 @@ export default class FirmFs {
 
       if (seed.abiCID !== undefined) {
         await this._ipfsClient.files.cp(
+          // FIXME: should not be error here even without disabling
+          // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
           '/ipfs/' + seed.abiCID,
           `/.firm/${normAddr}/sc/abi.json`,
           {
@@ -190,6 +198,69 @@ export default class FirmFs {
     console.log('imported: ', cidStr, ' to: ', firmPath);
 
     return cids;
+  }
+
+  async sendMsgToContract(msg: Message) {
+    const stat = this.getEntryStat(msg.to);
+    if (stat === undefined) {
+      throw new InvalidArgument('No directory for this address');
+    }
+
+    const decoded = MessageCodec.decode(msg);
+    // TODO: why does it complain here
+    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+    if (isLeft(decoded)) {
+      const decoded = MessageCodec.decode(msg);
+      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+      if (isLeft(decoded)) {
+        throw Error(
+          // TODO: why does it complain here
+          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+          `Could not validate: ${PathReporter.report(decoded).join('\n')}`
+        );
+      }
+    }
+
+    // TODO: move somewhere else
+    // We now know it is a valid Message
+    const file = objectToFile(msg);
+    const cid = await getFileCID(file);
+    if (cid === undefined) {
+      throw new InvalidArgument('Unable to get CID of message');
+    }
+    const cidStr = cid.toString();
+    const firmPath = `/.firm/${normalizeHexStr(msg.to)}/above/${cidStr}`
+    await this._ipfsClient.files.write(
+      firmPath,
+      file.content,
+      {
+        offset: 0,
+        create: true,
+        parents: true,
+        truncate: true
+      }
+    );
+
+    const cdecoded = CInputMsgCodec.decode(msg);
+    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+    if (isRight(cdecoded)) {
+      const m = cdecoded.right;
+      switch (m.type) {
+        case 'ContractInput': {
+          break;
+        }
+        case 'ContractInputEncoded': {
+          break;
+        }
+        case 'ContractTxMsg': {
+          break;
+        }
+        default: {
+          const exhaustiveCheck: never = m;
+          break;
+        }
+      }
+    }
   }
 
   async init() {

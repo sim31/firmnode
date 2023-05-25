@@ -127,7 +127,14 @@ io.on('connection', (socket) => {
       // TODO: clearer error messages?
       callback(JSON.stringify(err));
     }
-  })
+  });
+
+  socket.on('send', async (msg, callback) => {
+    if (firmFs === undefined) {
+      // eslint-disable-next-line n/no-callback-literal
+      callback('not initialized');
+    }
+  });
 });
 
 server.listen(mainPort, () => {
