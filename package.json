@@ -27,6 +27,7 @@
   },
   "homepage": "https://github.com/sim31/firmnode#readme",
   "dependencies": {
+    "@ipld/car": "^4.1.6",
     "dotenv": "^16.0.3",
     "ethers": "^5.7.2",
     "express": "^4.18.2",

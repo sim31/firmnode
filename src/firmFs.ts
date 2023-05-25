@@ -9,22 +9,11 @@ import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types'
 import { ContractSeed } from './contractSeed';
 import stringify from 'json-stable-stringify-without-jsonify'
 import InvalidArgument from 'firmcore/src/exceptions/InvalidArgument';
+import { CarCIDIterator } from '@ipld/car';
 
-async function * streamToIt(stream: ReadableStream<Uint8Array>) {
-  // Get a lock on the stream
-  const reader = stream.getReader();
-
-  try {
-    while (true) {
-      // Read from the stream
-      const { done, value } = await reader.read();
-      // Exit if we're done
-      if (done) return;
-      // Else yield the chunk
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
+async function * buffersToAIterable(buffers: Buffer[]) {
+  for (const buffer of buffers) {
+    yield buffer;
   }
 }
 
@@ -172,24 +161,35 @@ export default class FirmFs {
       throw new InvalidArgument('No directory for this address');
     }
 
-    const options = { pinRoots: false };
-    const results = [];
-    for await (const r of this._ipfsClient.dag.import(carFile)) {
-      console.log('imported: ', r);
-      results.push(r);
-
-      const cidStr = r.root.cid.toString();
-      await this._ipfsClient.files.cp(
-        '/ipfs/' + cidStr,
-        `/.firm/${normalizeHexStr(addr)}/above/${cidStr}`,
-        {
-          parents: true,
-          cidVersion: 0
-        }
-      );
+    const cidIt = await CarCIDIterator.fromIterable(buffersToAIterable(carFile));
+    const cids = await cidIt.getRoots();
+    const cid = cids[0];
+    if (cids.length > 1 || cid === undefined) {
+      throw new InvalidArgument('Imported CAR file should have exactly one root');
     }
 
-    return results;
+    const options = { pinRoots: false };
+
+    for await (const v of this._ipfsClient.dag.import(carFile, options)) {
+      console.log(v);
+    }
+
+    const cidStr = cid.toString();
+    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+    const firmPath = `/.firm/${normalizeHexStr(addr)}/above/${cidStr}`
+    await this._ipfsClient.files.cp(
+      // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+      '/ipfs/' + cidStr,
+      firmPath,
+      {
+        parents: true,
+        cidVersion: 0
+      }
+    );
+
+    console.log('imported: ', cidStr, ' to: ', firmPath);
+
+    return cids;
   }
 
   async init() {

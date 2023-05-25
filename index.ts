@@ -1,4 +1,4 @@
-import type { Express, NextFunction, Request, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -119,6 +119,8 @@ io.on('connection', (socket) => {
     try {
       console.log('import from: ', socket.id, '. carFile: ', carFile);
       const results = await firmFs.importCARToAddr(to, carFile);
+      // eslint-disable-next-line n/no-callback-literal
+      callback({ roots: results });
       console.log('results: ', results);
     } catch (err: any) {
       console.error('Error importing: ', err);
