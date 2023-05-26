@@ -9,13 +9,15 @@ import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types'
 import { ContractSeed } from 'firmcore/src/firmcore-firmnode/contractSeed';
 import stringify from 'json-stable-stringify-without-jsonify'
 import InvalidArgument from 'firmcore/src/exceptions/InvalidArgument';
+import NotInitialized from 'firmcore/src/exceptions/NotInitialized';
 import { CarCIDIterator } from '@ipld/car';
-import { Message, CInputMsgCodec, MessageCodec } from 'firmcore/src/firmcore-firmnode/message'
+import { Message, CInputMsgCodec, MessageCodec, CInputEncMsg, CInputTxMsg, CInputDecMsg, newCInputTxMsg } from 'firmcore/src/firmcore-firmnode/message'
 import NotImplementedError from 'firmcore/src/exceptions/NotImplementedError';
 import { objectToFile, getFileCID } from 'firmcore/src/helpers/car';
 import { PathReporter } from 'io-ts/PathReporter';
 import { isLeft, isRight } from 'fp-ts/Either';
-import { right } from 'fp-ts/lib/EitherT';
+import { SendResult } from './socketTypes';
+import { txApplied } from 'firmcore/src/helpers/transactions';
 
 async function * buffersToAIterable(buffers: Buffer[]) {
   for (const buffer of buffers) {
@@ -26,9 +28,11 @@ async function * buffersToAIterable(buffers: Buffer[]) {
 export default class FirmFs {
   protected _deployer: FirmContractDeployer;
   protected _ipfsClient: IPFSHTTPClient;
-  private _fsContract: Filesystem | undefined;
+  protected _fsContract: Filesystem | undefined;
+  protected _provider: ethers.providers.JsonRpcProvider;
 
   constructor(provider: ethers.providers.JsonRpcProvider) {
+    this._provider = provider;
     this._ipfsClient = create({
       url: 'http://127.0.0.1:5001/api/v0'
     });
@@ -141,7 +145,7 @@ export default class FirmFs {
 
       const encoder = new TextEncoder();
 
-      const content = encoder.encode(stringify(seed.deploymentTx, { space: 2 }));
+      const content = encoder.encode(stringify(seed.deploymentMsg, { space: 2 }));
 
       // TODO: check if same CID is already there instead of writing each time?
       await this._ipfsClient.files.write(
@@ -200,7 +204,20 @@ export default class FirmFs {
     return cids;
   }
 
-  async sendMsgToContract(msg: Message) {
+  // Returns true if transaction succeded
+  protected async _applyCInputEncMsg(
+    inputMsg: CInputEncMsg
+  ): Promise<ethers.providers.TransactionReceipt> {
+    const resp = await this._provider.getSigner().sendTransaction({
+      to: inputMsg.to,
+      data: inputMsg.data
+    });
+    const receipt = await resp.wait();
+    return receipt;
+  }
+
+  async sendMsgToContract(msg: Message): Promise<SendResult> {
+    const fsContract = this.getFsContract();
     const stat = this.getEntryStat(msg.to);
     if (stat === undefined) {
       throw new InvalidArgument('No directory for this address');
@@ -208,11 +225,9 @@ export default class FirmFs {
 
     const decoded = MessageCodec.decode(msg);
     // TODO: why does it complain here
-    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-    if (isLeft(decoded)) {
+    if (isLeft(decoded) === true) {
       const decoded = MessageCodec.decode(msg);
-      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-      if (isLeft(decoded)) {
+      if (isLeft(decoded) === true) {
         throw Error(
           // TODO: why does it complain here
           // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
@@ -229,7 +244,8 @@ export default class FirmFs {
       throw new InvalidArgument('Unable to get CID of message');
     }
     const cidStr = cid.toString();
-    const firmPath = `/.firm/${normalizeHexStr(msg.to)}/above/${cidStr}`
+    const normTo = normalizeHexStr(msg.to);
+    const firmPath = `/.firm/${normTo}/above/${cidStr}`
     await this._ipfsClient.files.write(
       firmPath,
       file.content,
@@ -241,33 +257,96 @@ export default class FirmFs {
       }
     );
 
+    const result: SendResult = { cidStr };
+
     const cdecoded = CInputMsgCodec.decode(msg);
     // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
     if (isRight(cdecoded)) {
       const m = cdecoded.right;
       switch (m.type) {
         case 'ContractInput': {
+          result.error = 'Not implemented';
           break;
         }
         case 'ContractInputEncoded': {
+          const receipt = await this._applyCInputEncMsg(m);
+          result.txReceipt = receipt;
+          if (txApplied(receipt) === true) {
+            try {
+              await this._ipfsClient.files.cp(
+                firmPath,
+                `/.firm/${normTo}/below/in/${cidStr}`,
+                { parents: true }
+              );
+
+              // Handle messages to factory contract (we have to create directories for created smart contracts)
+              if (m.to === this._deployer.getFactoryAddress()) {
+                const address = this._deployer.getDetAddress(m.data);
+                if (!await this._deployer.contractExists(address)) {
+                  throw new Error('Transaction to factory succeeded but contract not created');
+                }
+                result.contractsCreated = [address];
+
+                for (const log of receipt.logs) {
+                  if (log.address === fsContract.address) {
+                    const event = fsContract.interface.parseLog(log);
+                    if (event.name === 'AbiSignal' && 'rootCID' in event.args) {
+                      const cidBytes = event.args.rootCID;
+                      if (typeof cidBytes === 'string') {
+                        // Validate cidBytes
+                        bytes32StrToCid0(cidBytes);
+                        // Calculate contract address
+                        try {
+                          await this.initContractDir(address, {
+                            abiCID: cidBytes,
+                            deploymentMsg: m
+                          });
+                        } catch (err: any) {
+                          result.error = `Failed creating directory for contract: ${JSON.stringify(err)}`;
+                        }
+                      } else {
+                        result.error = 'Unexpected argument for AbiSignal event';
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (err: any) {
+              result.error = JSON.stringify(err);
+            }
+          } else {
+            result.error = 'Applying tx failed'
+          }
           break;
         }
         case 'ContractTxMsg': {
+          result.error = 'Not implemented'
           break;
         }
         default: {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const exhaustiveCheck: never = m;
           break;
         }
       }
     }
+
+    return result;
+  }
+
+  protected getFsContract(): Filesystem {
+    if (this._fsContract === undefined) {
+      throw new NotInitialized();
+    }
+    return this._fsContract;
   }
 
   async init() {
     await this._deployer.init();
+    const deplTx = this._deployer.getFactoryDeploymentTx().transaction;
     await this.initContractDir(
       this._deployer.getFactoryAddress(),
-      { deploymentTx: this._deployer.getFactoryDeploymentTx() },
+      { deploymentMsg: newCInputTxMsg(this._deployer.getFactoryAddress(), deplTx) },
     );
 
     this._fsContract = await this._deployer.deployFilesystem();

@@ -1,4 +1,4 @@
-import { ClientToServerEvents as FcClientToServer, ErrorCallback } from 'firmcore/src/firmcore-firmnode/socketTypes';
+import { ClientToServerEvents as FcClientToServer, ImportCallback } from 'firmcore/src/firmcore-firmnode/socketTypes';
 import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types';
 import { Overwrite } from 'utility-types';
 
@@ -8,6 +8,6 @@ export type ClientToServerEvents = Overwrite<FcClientToServer, {
   import: (
     to: AddressStr,
     carFile: Buffer[],
-    callback: ErrorCallback
+    callback: ImportCallback
   ) => void
 }>;

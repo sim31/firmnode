@@ -132,7 +132,17 @@ io.on('connection', (socket) => {
   socket.on('send', async (msg, callback) => {
     if (firmFs === undefined) {
       // eslint-disable-next-line n/no-callback-literal
-      callback('not initialized');
+      callback({ error: 'not initialized' });
+      return;
+    }
+
+    try {
+      const result = await firmFs.sendMsgToContract(msg);
+      callback(result);
+    } catch (err: any) {
+      console.log('Error sending: ', err);
+      // eslint-disable-next-line n/no-callback-literal
+      callback({ error: JSON.stringify(err) })
     }
   });
 });

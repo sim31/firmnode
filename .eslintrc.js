@@ -20,6 +20,7 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': 'warn',
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/consistent-type-imports': 'off',
-    '@typescript-eslint/space-before-function-paren': 'off'
+    '@typescript-eslint/space-before-function-paren': 'off',
+    '@typescript-eslint/strict-boolean-expressions': 'warn'
   }
 }
