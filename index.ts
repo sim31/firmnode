@@ -5,9 +5,10 @@ import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import ganache from 'ganache';
 import { ethers } from 'ethers';
-import fs from 'fs';
+import * as fs from 'fs';
 import FirmFs from './src/firmFs.js';
 import { ServerToClientEvents, ClientToServerEvents } from './src/socketTypes.js';
+import { anyToStr } from './src/helpers/any-to-str.js';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';
@@ -120,12 +121,11 @@ io.on('connection', (socket) => {
       console.log('import from: ', socket.id, '. carFile: ', carFile);
       const results = await firmFs.importCARToAddr(to, carFile);
       // eslint-disable-next-line n/no-callback-literal
-      callback({ roots: results });
+      callback({ roots: [results.cid] });
       console.log('results: ', results);
     } catch (err: any) {
       console.error('Error importing: ', err);
-      // TODO: clearer error messages?
-      callback(JSON.stringify(err));
+      callback(anyToStr(err));
     }
   });
 
@@ -138,11 +138,14 @@ io.on('connection', (socket) => {
 
     try {
       const result = await firmFs.sendMsgToContract(msg);
+      if (result.error !== undefined) {
+        console.log('error: ', result.error);
+      }
       callback(result);
     } catch (err: any) {
       console.log('Error sending: ', err);
       // eslint-disable-next-line n/no-callback-literal
-      callback({ error: JSON.stringify(err) })
+      callback({ error: anyToStr(err) })
     }
   });
 });
