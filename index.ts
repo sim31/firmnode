@@ -6,8 +6,8 @@ import dotenv from 'dotenv';
 import ganache from 'ganache';
 import { ethers } from 'ethers';
 import fs from 'fs';
-import FirmFs from './src/firmFs';
-import { ServerToClientEvents, ClientToServerEvents } from './src/socketTypes';
+import FirmFs from './src/firmFs.js';
+import { ServerToClientEvents, ClientToServerEvents } from './src/socketTypes.js';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';

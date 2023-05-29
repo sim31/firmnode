@@ -1,23 +1,27 @@
 import { ethers } from 'ethers';
 // TODO: fix path
-import { FirmContractDeployer } from 'firmcore/node_modules/firmcontracts/interface/deployer';
+import deployerPkg from 'firmcore/node_modules/firmcontracts/interface/deployer.js';
 import { Filesystem } from 'firmcore/node_modules/firmcontracts/typechain-types';
-import { bytes32StrToCid0 } from 'firmcore/node_modules/firmcontracts/interface/cid';
+import * as cidPkg from 'firmcore/node_modules/firmcontracts/interface/cid.js';
 import { create, IPFSHTTPClient } from 'ipfs-http-client';
-import { normalizeHexStr } from 'firmcore/node_modules/firmcontracts/interface/abi';
-import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types';
-import { ContractSeed } from 'firmcore/src/firmcore-firmnode/contractSeed';
+import abiPkg from 'firmcore/node_modules/firmcontracts/interface/abi.js';
+import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types.js';
+import { ContractSeed } from 'firmcore/src/firmcore-firmnode/contractSeed.js';
 import stringify from 'json-stable-stringify-without-jsonify'
-import InvalidArgument from 'firmcore/src/exceptions/InvalidArgument';
-import NotInitialized from 'firmcore/src/exceptions/NotInitialized';
+import { InvalidArgument } from 'firmcore/src/exceptions/InvalidArgument.js';
+import { NotInitialized } from 'firmcore/src/exceptions/NotInitialized.js';
 import { CarCIDIterator } from '@ipld/car';
-import { Message, CInputMsgCodec, MessageCodec, CInputEncMsg, CInputTxMsg, CInputDecMsg, newCInputTxMsg } from 'firmcore/src/firmcore-firmnode/message'
-import NotImplementedError from 'firmcore/src/exceptions/NotImplementedError';
-import { objectToFile, getFileCID } from 'firmcore/src/helpers/car';
-import { PathReporter } from 'io-ts/PathReporter';
-import { isLeft, isRight } from 'fp-ts/Either';
-import { SendResult } from './socketTypes';
-import { txApplied } from 'firmcore/src/helpers/transactions';
+import { Message, CInputMsgCodec, MessageCodec, CInputEncMsg, CInputTxMsg, CInputDecMsg, newCInputTxMsg } from 'firmcore/src/firmcore-firmnode/message.js'
+import { NotImplementedError } from 'firmcore/src/exceptions/NotImplementedError.js';
+import { objectToFile, getFileCID } from 'firmcore/src/helpers/car.js';
+import { PathReporter } from 'io-ts/lib/PathReporter.js';
+import { isLeft, isRight } from 'fp-ts/lib/Either.js';
+import { SendResult } from './socketTypes.js';
+import { txApplied } from 'firmcore/src/helpers/transactions.js';
+
+class FirmContractDeployer extends deployerPkg.FirmContractDeployer {};
+const { bytes32StrToCid0 } = cidPkg;
+const { normalizeHexStr } = abiPkg;
 
 async function * buffersToAIterable(buffers: Buffer[]) {
   for (const buffer of buffers) {
@@ -225,9 +229,9 @@ export default class FirmFs {
 
     const decoded = MessageCodec.decode(msg);
     // TODO: why does it complain here
-    if (isLeft(decoded) === true) {
+    if (isLeft(decoded)) {
       const decoded = MessageCodec.decode(msg);
-      if (isLeft(decoded) === true) {
+      if (isLeft(decoded)) {
         throw Error(
           // TODO: why does it complain here
           // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
@@ -271,7 +275,7 @@ export default class FirmFs {
         case 'ContractInputEncoded': {
           const receipt = await this._applyCInputEncMsg(m);
           result.txReceipt = receipt;
-          if (txApplied(receipt) === true) {
+          if (txApplied(receipt)) {
             try {
               await this._ipfsClient.files.cp(
                 firmPath,

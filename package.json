@@ -2,6 +2,7 @@
   "name": "firmnode",
   "version": "0.1.0",
   "description": "Node for firmament filesystem",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -27,7 +28,7 @@
   },
   "homepage": "https://github.com/sim31/firmnode#readme",
   "dependencies": {
-    "@ipld/car": "^4.1.6",
+    "@ipld/car": "^5.1.1",
     "dotenv": "^16.0.3",
     "ethers": "^5.7.2",
     "express": "^4.18.2",
@@ -35,7 +36,7 @@
     "fp-ts": "^2.15.0",
     "ganache": "^7.8.0",
     "io-ts": "^2.2.20",
-    "ipfs-http-client": "^56.0.3",
+    "ipfs-http-client": "^60.0.1",
     "json-stable-stringify-without-jsonify": "^1.0.1",
     "socket.io": "^4.6.1",
     "utility-types": "^3.10.0"
@@ -49,6 +50,7 @@
     "eslint": "^8.40.0",
     "eslint-config-standard-with-typescript": "^34.0.1",
     "ts-node": "^10.9.1",
+    "tsx": "^3.12.7",
     "typescript": "^5.0.4"
   }
 }
