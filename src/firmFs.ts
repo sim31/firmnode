@@ -64,6 +64,32 @@ export default class FirmFs {
     }
   }
 
+  async getSubPathStat(address: string, subPath: string) {
+    const normAddr = normalizeHexStr(address);
+    const path = `/.firm/${normAddr}/${subPath}`
+    const stat = await this._ipfsClient.files.stat(path);
+    return stat;
+  }
+
+  async getSubPathCID(address: string, subPath: string) {
+    const stat = await this.getSubPathStat(address, subPath);
+    return stat.cid.toV0() as CID;
+  }
+
+  async getSubPathCIDStr(address: string, subPath: string) {
+    return (await this.getSubPathCID(address, subPath)).toString();
+  }
+
+  async getIPBlockStat(cidStr: string) {
+    const cid = CID.parse(cidStr);
+    return await this._ipfsClient.block.stat(cid)
+  }
+
+  async getIPBlock(cidStr: string) {
+    const cid = CID.parse(cidStr);
+    return (await this._ipfsClient.block.get(cid)) as Uint8Array;
+  }
+
   async updateEntry(cid: string, address: string) {
     // * check if directory does not already exist
     // * If it does, check if it is the same as we are trying to set
@@ -201,7 +227,6 @@ export default class FirmFs {
       throw new InvalidArgument('No directory for this address');
     }
 
-
     const cidIt = await CarCIDIterator.fromIterable(buffersToAIterable(carFile));
     const cids = await cidIt.getRoots();
     const cid = cids[0];
@@ -276,14 +301,15 @@ export default class FirmFs {
       );
     }
 
-    // TODO: move somewhere else
     // We now know it is a valid Message
     const { path: abovePath, cid } = await this._importMsg(msg);
 
     const cidStr = cid.toString();
     const normTo = normalizeHexStr(msg.to);
 
-    const result: SendResult = { cidStr };
+    const belowCIDStr = await this.getSubPathCIDStr(normTo, 'below');
+
+    const result: SendResult = { cidStr, belowCIDStr };
 
     const cdecoded = CInputMsgCodec.decode(msg);
     // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
@@ -305,13 +331,17 @@ export default class FirmFs {
                 { parents: true, cidVersion: 0 }
               );
 
+              result.belowCIDStr = await this.getSubPathCIDStr(normTo, 'below');
+
               // Handle messages to factory contract (we have to create directories for created smart contracts)
               if (m.to === this._deployer.getFactoryAddress()) {
                 const address = this._deployer.getDetAddress(m.data);
                 if (!await this._deployer.contractExists(address)) {
                   throw new Error('Transaction to factory succeeded but contract not created');
                 }
-                result.contractsCreated = [address];
+                result.contractsCreated = [
+                  { address, belowCIDStr: null }
+                ];
 
                 let initialized: boolean = false;
                 const parsedLogs = [];
@@ -333,6 +363,8 @@ export default class FirmFs {
                             abiCID: abiCID,
                             deploymentMsg: cid.toV0().toString(),
                           });
+                          result.contractsCreated[0]!.belowCIDStr = 
+                            await this.getSubPathCIDStr(address, 'below');
                           initialized = true;
                         } catch (err: any) {
                           result.error = `Failed creating directory for contract: ${anyToStr(err)}`;

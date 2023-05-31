@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import FirmFs from './src/firmFs.js';
 import { ServerToClientEvents, ClientToServerEvents } from './src/socketTypes.js';
 import { anyToStr } from './src/helpers/any-to-str.js';
+import { left, right } from 'fp-ts/lib/Either.js';
 
 const dbDir = './.db';
 const accountsPath = './.db/accounts.json';
@@ -146,6 +147,51 @@ io.on('connection', (socket) => {
       console.log('Error sending: ', err);
       // eslint-disable-next-line n/no-callback-literal
       callback({ error: anyToStr(err) })
+    }
+  });
+
+  socket.on('getPathCID', async (address, path, callback) => {
+    if (firmFs === undefined) {
+      callback(left('not initialized'));
+      return;
+    }
+
+    try {
+      const cidStr = await firmFs.getSubPathCIDStr(address, path);
+      callback(right(cidStr));
+    } catch (err: any) {
+      console.log('Error trying to respond to getPathCID request, ', address, '/', path, err);
+      callback(left(anyToStr(err)));
+    }
+  });
+
+  socket.on('getIPBlockStat', async (cidStr, callback) => {
+    if (firmFs === undefined) {
+      callback(left('not initialized'));
+      return;
+    }
+
+    try {
+      const stat = await firmFs.getIPBlockStat(cidStr);
+      callback(right(stat));
+    } catch (err: any) {
+      console.log('Error trying to respond to getIPBlockStat request, ', cidStr, ', ', err);
+      callback(left(anyToStr(err)));
+    }
+  });
+
+  socket.on('getIPBlock', async (cidStr, callback) => {
+    if (firmFs === undefined) {
+      callback(left('not initialized'));
+      return;
+    }
+
+    try {
+      const block = await firmFs.getIPBlock(cidStr);
+      callback(right(block));
+    } catch (err: any) {
+      console.log('Error trying to respond to getIPBlockStat request, ', cidStr, ', ', err);
+      callback(left(anyToStr(err)));
     }
   });
 });
