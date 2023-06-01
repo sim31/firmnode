@@ -6,19 +6,22 @@ import cidPkg from 'firmcore/node_modules/firmcontracts/interface/cid.js';
 import { CID, create, IPFSHTTPClient } from 'kubo-rpc-client';
 import abiPkg from 'firmcore/node_modules/firmcontracts/interface/abi.js';
 import { AddressStr } from 'firmcore/node_modules/firmcontracts/interface/types.js';
-import { ContractSeed } from 'firmcore/src/firmcore-firmnode/contractSeed.js';
+import { ContractSeed } from 'firmcore/src/firmnode-base/contractSeed.js';
 import stringify from 'json-stable-stringify-without-jsonify'
 import { InvalidArgument } from 'firmcore/src/exceptions/InvalidArgument.js';
 import { NotInitialized } from 'firmcore/src/exceptions/NotInitialized.js';
 import { CarCIDIterator } from '@ipld/car';
-import { Message, CInputMsgCodec, MessageCodec, CInputEncMsg, CInputTxMsg, CInputDecMsg, newCInputTxMsg } from 'firmcore/src/firmcore-firmnode/message.js'
-import { NotImplementedError } from 'firmcore/src/exceptions/NotImplementedError.js';
-import { objectToFile, getFileCID, createCARFile } from 'firmcore/src/helpers/car.js';
+import { Message, CInputMsgCodec, MessageCodec, CInputEncMsg, CInputTxMsg, CInputDecMsg, newCInputTxMsg, FactoryInputDecMsg } from 'firmcore/src/firmnode-base/message.js'
+import { objectToFile, getFileCID, createCARFile, FsEntries } from 'firmcore/src/helpers/car.js';
 import { PathReporter } from 'io-ts/lib/PathReporter.js';
 import { isLeft, isRight } from 'fp-ts/lib/Either.js';
 import { SendResult } from './socketTypes.js';
 import { txApplied } from 'firmcore/src/helpers/transactions.js';
-import { anyToStr } from './helpers/any-to-str.js';
+import { anyToStr } from './helpers/anyToStr.js';
+import { FirmnodeBlockstore } from 'firmcore/src/firmnode-base/blockstore.js';
+import { BaseFirmnode, EntryImportResult } from 'firmcore/src/firmnode-base/baseFirmnode.js';
+import { UnixFSEntry, UnixFSFile, exporter } from "ipfs-unixfs-exporter";
+import { NotFound } from 'firmcore/src/exceptions/NotFound.js';
 
 class FirmContractDeployer extends deployerPkg.FirmContractDeployer {};
 const { bytes32StrToCid0 } = cidPkg;
@@ -30,21 +33,78 @@ async function * buffersToAIterable(buffers: Buffer[] | Uint8Array[]) {
   }
 }
 
-export default class FirmFs {
+export class Firmnode extends BaseFirmnode {
   protected _deployer: FirmContractDeployer;
   protected _ipfsClient: IPFSHTTPClient;
   protected _fsContract: Filesystem | undefined;
   protected _provider: ethers.providers.JsonRpcProvider;
+  protected _blockstore: FirmnodeBlockstore;
 
   constructor(provider: ethers.providers.JsonRpcProvider) {
+    super();
     this._provider = provider;
     this._ipfsClient = create({
       url: 'http://127.0.0.1:5001/api/v0'
     });
     this._deployer = new FirmContractDeployer(provider);
+    this._blockstore = new FirmnodeBlockstore(this);
   }
 
-  async getEntryStat(address: string) {
+  async init() {
+    await this._deployer.init();
+    const deplTx = this._deployer.getFactoryDeploymentTx().transaction;
+    try {
+      await this.initContractDir(
+        this._deployer.getFactoryAddress(),
+        { deploymentMsg: newCInputTxMsg(this._deployer.getFactoryAddress(), deplTx) },
+      );
+    } catch (err: any) {
+      console.log('Failed initializing factory dir: ', err);
+    }
+
+    this._fsContract = await this._deployer.deployFilesystem();
+
+    this._fsContract.on(
+      this._fsContract.filters.SetRoot(),
+      (addr, cidBytes) => {
+        const cid: string = bytes32StrToCid0(cidBytes);
+        void this.updateEntry(cid, addr);
+      }
+    )
+  }
+
+  override async getIPBlockStat(cidStr: string) {
+    const cid = CID.parse(cidStr);
+    return await this._ipfsClient.block.stat(cid)
+  }
+
+  override async getIPBlock(cidStr: string) {
+    const cid = CID.parse(cidStr);
+    const block = await this._ipfsClient.block.get(cid);
+    console.log('block: ', block);
+    return block as Uint8Array;
+  }
+
+  override async getContractCID(address: AddressStr): Promise<string> {
+    const stat = await this.getEntryStat(address);
+    if (stat === undefined) {
+      throw new Error(`Unable to retrieve stat for dir of contract: ${address}`)
+    }
+    return (stat.cid.toV0() as CID).toV0().toString();
+  }
+
+  override async readEntry(contractAddr: AddressStr, path: string): Promise<UnixFSEntry> {
+    const cidStr = await this.getContractCID(contractAddr);
+    const realPath = `${cidStr}/${path}`;
+    return await exporter(realPath, this._blockstore);
+  }
+
+  override async importEntries(contractAddr: AddressStr, fsEntries: FsEntries): Promise<EntryImportResult[]> {
+
+  }
+
+
+  protected async getEntryStat(address: string) {
     const normAddr = normalizeHexStr(address);
     try {
       const stat = await this._ipfsClient.files.stat(`/.firm/${normAddr}`);
@@ -55,7 +115,7 @@ export default class FirmFs {
     }
   }
 
-  async removeEntry(address: string) {
+  protected async removeEntry(address: string) {
     const normAddr = normalizeHexStr(address);
     try {
       await this._ipfsClient.files.rm(`/.firm/${normAddr}`, { recursive: true });
@@ -64,33 +124,23 @@ export default class FirmFs {
     }
   }
 
-  async getSubPathStat(address: string, subPath: string) {
+  protected async getSubPathStat(address: string, subPath: string) {
     const normAddr = normalizeHexStr(address);
     const path = `/.firm/${normAddr}/${subPath}`
     const stat = await this._ipfsClient.files.stat(path);
     return stat;
   }
 
-  async getSubPathCID(address: string, subPath: string) {
+  protected async getSubPathCID(address: string, subPath: string) {
     const stat = await this.getSubPathStat(address, subPath);
     return stat.cid.toV0() as CID;
   }
 
-  async getSubPathCIDStr(address: string, subPath: string) {
+  protected async getSubPathCIDStr(address: string, subPath: string) {
     return (await this.getSubPathCID(address, subPath)).toString();
   }
 
-  async getIPBlockStat(cidStr: string) {
-    const cid = CID.parse(cidStr);
-    return await this._ipfsClient.block.stat(cid)
-  }
-
-  async getIPBlock(cidStr: string) {
-    const cid = CID.parse(cidStr);
-    return (await this._ipfsClient.block.get(cid)) as Uint8Array;
-  }
-
-  async updateEntry(cid: string, address: string) {
+  protected async updateEntry(cid: string, address: string) {
     // * check if directory does not already exist
     // * If it does, check if it is the same as we are trying to set
     //   * If so - return
@@ -127,7 +177,7 @@ export default class FirmFs {
     }
   }
 
-  async createContractDir(
+  protected async createContractDir(
     address: AddressStr,
   ) {
     try {
@@ -156,7 +206,7 @@ export default class FirmFs {
     }
   }
 
-  async initContractDir(address: AddressStr, seed: ContractSeed) {
+  protected async initContractDir(address: AddressStr, seed: ContractSeed) {
     const normAddr = normalizeHexStr(address);
     await this.createContractDir(normAddr);
 
@@ -200,7 +250,7 @@ export default class FirmFs {
     }
   }
 
-  async _pathExists(firmPath: string, cid: CID): Promise<boolean> {
+  protected async _pathExists(firmPath: string, cid: CID): Promise<boolean> {
     const cidStr = cid.toV0().toString();
     try {
       const stat = await this._ipfsClient.files.stat(firmPath);
@@ -218,7 +268,7 @@ export default class FirmFs {
     }
   }
 
-  async importCARToAddr(addr: AddressStr, carFile: Buffer[] | Uint8Array[], extension?: string) {
+  protected async importCARToAddr(addr: AddressStr, carFile: Buffer[] | Uint8Array[], extension?: string) {
     // * Check if this contract exists (we have its directory)
     // * Import this CAR file
     // * cp root of this CAR file
@@ -279,6 +329,13 @@ export default class FirmFs {
     return receipt;
   }
 
+  protected async _applyFactoryInputDec(
+    inputMsg: FactoryInputDecMsg
+  ): Promise<ethers.providers.TransactionReceipt> {
+    const abiCIDStr = inputMsg.abiCIDStr;
+
+  }
+
   protected async _importMsg(msg: Message) {
     const { parts, rootCID, } = await createCARFile(
       [objectToFile(msg)], { wrapInDir: false }
@@ -287,7 +344,7 @@ export default class FirmFs {
     return { cid: rootCID, path };
   }
 
-  async sendMsgToContract(msg: Message): Promise<SendResult> {
+  protected async sendMsgToContract(msg: Message): Promise<SendResult> {
     const fsContract = this.getFsContract();
     const stat = this.getEntryStat(msg.to);
     if (stat === undefined) {
@@ -316,11 +373,15 @@ export default class FirmFs {
     if (isRight(cdecoded)) {
       const m = cdecoded.right;
       switch (m.type) {
-        case 'ContractInput': {
+        case 'FactoryInputDec': {
           result.error = 'Not implemented';
           break;
         }
-        case 'ContractInputEncoded': {
+        case 'ContractInputDec': {
+          result.error = 'Not implemented';
+          break;
+        }
+        case 'ContractInputEnc': {
           const receipt = await this._applyCInputEncMsg(m);
           result.txReceipt = receipt;
           if (txApplied(receipt)) {
@@ -388,7 +449,7 @@ export default class FirmFs {
           }
           break;
         }
-        case 'ContractTxMsg': {
+        case 'ContractInputTx': {
           result.error = 'Not implemented'
           break;
         }
@@ -410,26 +471,4 @@ export default class FirmFs {
     return this._fsContract;
   }
 
-  async init() {
-    await this._deployer.init();
-    const deplTx = this._deployer.getFactoryDeploymentTx().transaction;
-    try {
-      await this.initContractDir(
-        this._deployer.getFactoryAddress(),
-        { deploymentMsg: newCInputTxMsg(this._deployer.getFactoryAddress(), deplTx) },
-      );
-    } catch (err: any) {
-      console.log('Failed initializing factory dir: ', err);
-    }
-
-    this._fsContract = await this._deployer.deployFilesystem();
-
-    this._fsContract.on(
-      this._fsContract.filters.SetRoot(),
-      (addr, cidBytes) => {
-        const cid: string = bytes32StrToCid0(cidBytes);
-        void this.updateEntry(cid, addr);
-      }
-    )
-  }
 }

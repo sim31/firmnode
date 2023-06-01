@@ -6,9 +6,9 @@ import dotenv from 'dotenv';
 import ganache from 'ganache';
 import { ethers } from 'ethers';
 import * as fs from 'fs';
-import FirmFs from './src/firmFs.js';
+import FirmFs from './src/firmnode.js';
 import { ServerToClientEvents, ClientToServerEvents } from './src/socketTypes.js';
-import { anyToStr } from './src/helpers/any-to-str.js';
+import { anyToStr } from './src/helpers/anyToStr.js';
 import { left, right } from 'fp-ts/lib/Either.js';
 
 const dbDir = './.db';

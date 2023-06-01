@@ -36,6 +36,7 @@
     "fp-ts": "^2.15.0",
     "ganache": "^7.8.0",
     "io-ts": "^2.2.20",
+    "ipfs-unixfs-exporter": "^13.1.5",
     "json-stable-stringify-without-jsonify": "^1.0.1",
     "kubo-rpc-client": "^3.0.1",
     "socket.io": "^4.6.1",
